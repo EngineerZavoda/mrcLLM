@@ -541,14 +541,22 @@ def get_gpu_info_linux() -> Tuple[float, str]:
 
 def get_system_info() -> Dict[str, Any]:
     ram_gb = psutil.virtual_memory().total / (1024 ** 3)
-    os_name = platform.system() + " " + platform.release()
+    system = platform.system()
+    os_name = system + " " + platform.release()
     cpu_cores = psutil.cpu_count(logical=True) or 1
 
-    system = platform.system()
     if system == "Windows":
         vram_gb, gpu_name = get_gpu_info_windows()
     elif system == "Darwin":
         vram_gb, gpu_name = get_gpu_info_macos()
+        # Prefer human-readable macOS string over Darwin kernel version.
+        try:
+            product_name = subprocess.check_output(["sw_vers", "-productName"], text=True).strip()
+            product_version = subprocess.check_output(["sw_vers", "-productVersion"], text=True).strip()
+            if product_name and product_version:
+                os_name = f"{product_name} {product_version}"
+        except Exception:
+            pass
     else:
         vram_gb, gpu_name = get_gpu_info_linux()
 

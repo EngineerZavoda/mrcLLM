@@ -26,6 +26,8 @@ const historyListEl = document.getElementById("history-list");
 const clearHistoryBtn = document.getElementById("clear-history");
 
 const STORAGE_HISTORY = "llm_calc_history_v1";
+const STORAGE_HISTORY_SCHEMA = "llm_calc_history_schema";
+const HISTORY_SCHEMA_VERSION = 2;
 
 let lastResult = null;
 let compareItems = [];
@@ -231,20 +233,75 @@ function renderQuantizations(quantizations) {
   }
 }
 
+function ensureHistorySchema() {
+  const current = Number(localStorage.getItem(STORAGE_HISTORY_SCHEMA) || "0");
+  if (current !== HISTORY_SCHEMA_VERSION) {
+    localStorage.removeItem(STORAGE_HISTORY);
+    localStorage.setItem(STORAGE_HISTORY_SCHEMA, String(HISTORY_SCHEMA_VERSION));
+  }
+}
+
+function normalizeHistoryItem(item) {
+  if (!item || typeof item !== "object") return null;
+  if (typeof item.model_name !== "string" || !item.model_name.trim()) return null;
+  if (typeof item.mode !== "string" || !item.mode.trim()) return null;
+
+  const context_len = asNumber(item.context_len);
+  if (context_len < 256 || context_len > 131072) return null;
+
+  return {
+    model_name: item.model_name.trim(),
+    mode: item.mode.trim(),
+    context_len,
+    total_vram_gb: asNumber(item.total_vram_gb),
+    ram_gb: asNumber(item.ram_gb),
+    vram_gb: asNumber(item.vram_gb),
+    has_gpu: Boolean(item.has_gpu),
+    gpu_name: typeof item.gpu_name === "string" ? item.gpu_name : "Unknown",
+    os: typeof item.os === "string" ? item.os : "Unknown",
+    cpu_cores: Math.max(1, asNumber(item.cpu_cores) || 1),
+    language: typeof item.language === "string" ? item.language : "ru",
+    platform: typeof item.platform === "string" ? item.platform : "pc",
+    ts: asNumber(item.ts) || Date.now(),
+  };
+}
+
 function pushHistory(entry) {
-  const current = JSON.parse(localStorage.getItem(STORAGE_HISTORY) || "[]");
-  const next = [entry, ...current.filter((x) => !(x.model_name === entry.model_name && x.mode === entry.mode && x.context_len === entry.context_len))].slice(0, 8);
+  ensureHistorySchema();
+  const current = getHistory();
+  const normalized = normalizeHistoryItem(entry);
+  if (!normalized) return;
+
+  const next = [
+    normalized,
+    ...current.filter((x) => !(x.model_name === normalized.model_name && x.mode === normalized.mode && x.context_len === normalized.context_len)),
+  ].slice(0, 8);
   localStorage.setItem(STORAGE_HISTORY, JSON.stringify(next));
 }
 
 function getHistory() {
-  return JSON.parse(localStorage.getItem(STORAGE_HISTORY) || "[]");
+  ensureHistorySchema();
+  const raw = JSON.parse(localStorage.getItem(STORAGE_HISTORY) || "[]");
+  if (!Array.isArray(raw)) return [];
+  const normalized = raw.map(normalizeHistoryItem).filter(Boolean);
+  if (normalized.length !== raw.length) {
+    localStorage.setItem(STORAGE_HISTORY, JSON.stringify(normalized));
+  }
+  return normalized;
 }
 
 function fillFormFromHistory(item) {
   document.getElementById("model_name").value = item.model_name;
   document.getElementById("mode").value = item.mode;
   document.getElementById("context_len").value = item.context_len;
+  document.getElementById("ram_gb").value = item.ram_gb;
+  document.getElementById("vram_gb").value = item.vram_gb;
+  document.getElementById("gpu_name").value = item.gpu_name;
+  document.getElementById("os").value = item.os;
+  document.getElementById("cpu_cores").value = item.cpu_cores;
+  hasGpuEl.checked = Boolean(item.has_gpu);
+  platformEl.value = item.platform === "mac" ? "mac" : "pc";
+  applyPlatformPreset();
 }
 
 function renderHistory() {
@@ -258,7 +315,7 @@ function renderHistory() {
   for (const item of list) {
     const row = document.createElement("div");
     row.className = "history-item";
-    row.innerHTML = `<span>${item.model_name} | ${item.mode} | ctx ${item.context_len}</span><strong>${toGB(item.total_vram_gb)}</strong>`;
+    row.innerHTML = `<span>${item.model_name} | ${item.mode} | контекст ${item.context_len} токенов | RAM ${item.ram_gb.toFixed(1)} | VRAM ${item.vram_gb.toFixed(1)}</span><strong>${toGB(item.total_vram_gb)}</strong>`;
     row.addEventListener("click", () => fillFormFromHistory(item));
     historyListEl.appendChild(row);
   }
@@ -276,7 +333,7 @@ function renderCompare() {
   compareItems.forEach((item) => {
     const row = document.createElement("div");
     row.className = "compare-item";
-    row.innerHTML = `<span>${item.model_name} | ${item.mode} | ctx ${item.context_len}</span><strong>${toGB(item.total_vram_gb)}</strong>`;
+    row.innerHTML = `<span>${item.model_name} | ${item.mode} | контекст ${item.context_len} токенов</span><strong>${toGB(item.total_vram_gb)}</strong>`;
     compareListEl.appendChild(row);
   });
   comparePanel.classList.remove("hidden");
@@ -296,6 +353,14 @@ function renderResult(data, payload) {
     mode: payload.mode,
     context_len: payload.context_len,
     total_vram_gb: data.memory_requirements?.total_vram_gb || 0,
+    ram_gb: payload.system_info?.ram_gb || 0,
+    vram_gb: payload.system_info?.vram_gb || 0,
+    has_gpu: payload.system_info?.has_gpu || false,
+    gpu_name: payload.system_info?.gpu_name || "Unknown",
+    os: payload.system_info?.os || "Unknown",
+    cpu_cores: payload.system_info?.cpu_cores || 1,
+    language: payload.language || "ru",
+    platform: platformEl.value || "pc",
   };
 
   pushHistory({ ...lastResult, ts: Date.now() });
@@ -317,7 +382,8 @@ async function autoDetectSystem() {
     document.getElementById("cpu_cores").value = data.cpu_cores || 1;
     hasGpuEl.checked = Boolean(data.has_gpu);
 
-    if ((data.os || "").toLowerCase().includes("mac")) {
+    const osNorm = (data.os || "").toLowerCase();
+    if (osNorm.includes("mac") || osNorm.includes("darwin") || osNorm.includes("os x")) {
       platformEl.value = "mac";
     } else {
       platformEl.value = "pc";
@@ -378,6 +444,7 @@ clearCompareBtn.addEventListener("click", () => {
 
 clearHistoryBtn.addEventListener("click", () => {
   localStorage.removeItem(STORAGE_HISTORY);
+  localStorage.setItem(STORAGE_HISTORY_SCHEMA, String(HISTORY_SCHEMA_VERSION));
   renderHistory();
 });
 
@@ -386,5 +453,6 @@ platformEl.addEventListener("change", applyPlatformPreset);
 languageEl.addEventListener("change", applyLanguage);
 
 applyLanguage();
+ensureHistorySchema();
 renderHistory();
 renderCompare();

@@ -1,6 +1,10 @@
 {
   "version": 1,
   "specs": {
+    "gemma-4b": {
+      "hidden_size": 219089,
+      "layers": 1711
+    },
     "llama-70b": {
       "hidden_size": 916515,
       "layers": 7160
