@@ -1,14 +1,17 @@
 {
-  "llama-70b": {
-    "hidden_size": 916515,
-    "layers": 7160
-  },
-  "qwen-9b": {
-    "hidden_size": 328633,
-    "layers": 2567
-  },
-  "qwen-4b": {
-    "hidden_size": 219089,
-    "layers": 1711
+  "version": 1,
+  "specs": {
+    "llama-70b": {
+      "hidden_size": 916515,
+      "layers": 7160
+    },
+    "qwen-4b": {
+      "hidden_size": 219089,
+      "layers": 1711
+    },
+    "qwen-9b": {
+      "hidden_size": 328633,
+      "layers": 2567
+    }
   }
 }

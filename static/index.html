@@ -16,21 +16,27 @@
   <main class="layout">
     <section class="panel hero">
       <p class="eyebrow">LLM TOOLKIT</p>
-      <h1>Проверка совместимости модели с вашим железом</h1>
-      <p class="subtitle">
-        Введите название модели, выберите режим расчета и сравните требуемую память с вашей системой.
-      </p>
+      <h1 id="title">Проверка совместимости модели с вашим железом</h1>
+      <p id="subtitle" class="subtitle">Введите название модели, выберите режим расчета и сравните требуемую память с вашей системой.</p>
     </section>
 
     <section class="panel form-panel">
       <form id="check-form" novalidate>
         <div class="field full">
-          <label for="model_name">Название модели</label>
+          <label for="model_name" id="label_model">Название модели</label>
           <input id="model_name" name="model_name" type="text" placeholder="llama-3.3-70b-instruct-Q4_K_M" required />
         </div>
 
         <div class="field">
-          <label for="platform">Платформа</label>
+          <label for="language" id="label_lang">Язык</label>
+          <select id="language" name="language">
+            <option value="ru">Русский</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="platform" id="label_platform">Платформа</label>
           <select id="platform" name="platform">
             <option value="pc">PC (Windows/Linux)</option>
             <option value="mac">Mac (Apple Silicon/Intel)</option>
@@ -38,21 +44,26 @@
         </div>
 
         <div class="field">
-          <label for="mode">Режим</label>
+          <label for="mode" id="label_mode">Режим</label>
           <select id="mode" name="mode">
-            <option value="real">real (веса + KV cache)</option>
-            <option value="ollama">ollama (только веса)</option>
+            <option value="real">real (weights + KV cache)</option>
+            <option value="ollama">ollama (weights only)</option>
           </select>
         </div>
 
         <div class="field">
+          <label for="context_len" id="label_context">Контекст, токенов</label>
+          <input id="context_len" name="context_len" type="number" min="256" max="131072" step="256" value="4096" required />
+        </div>
+
+        <div class="field">
           <label id="ram_label" for="ram_gb">RAM, GB</label>
-          <input id="ram_gb" name="ram_gb" type="number" min="1" step="0.1" value="32" required />
+          <input id="ram_gb" name="ram_gb" type="number" min="0.1" max="4096" step="0.1" value="32" required />
         </div>
 
         <div class="field">
           <label id="vram_label" for="vram_gb">VRAM, GB</label>
-          <input id="vram_gb" name="vram_gb" type="number" min="0" step="0.1" value="12" required />
+          <input id="vram_gb" name="vram_gb" type="number" min="0" max="4096" step="0.1" value="12" required />
         </div>
 
         <div class="field">
@@ -63,24 +74,26 @@
         <div id="has_gpu_field" class="field checkbox-row">
           <label class="check-label" for="has_gpu">
             <input id="has_gpu" name="has_gpu" type="checkbox" checked />
-            Есть GPU
+            <span id="has_gpu_text">Есть GPU</span>
           </label>
         </div>
 
         <div class="field">
-          <label for="os">ОС</label>
+          <label for="os" id="label_os">ОС</label>
           <input id="os" name="os" type="text" value="Linux" />
         </div>
 
         <div class="field">
-          <label for="cpu_cores">CPU ядер</label>
-          <input id="cpu_cores" name="cpu_cores" type="number" min="1" step="1" value="8" />
+          <label for="cpu_cores" id="label_cpu">CPU ядер</label>
+          <input id="cpu_cores" name="cpu_cores" type="number" min="1" max="512" step="1" value="8" />
         </div>
 
         <p id="platform_hint" class="muted full"></p>
 
-        <div class="actions full">
+        <div class="actions full action-row">
+          <button id="autodetect-btn" type="button" class="secondary">Определить систему</button>
           <button id="submit-btn" type="submit">Проверить модель</button>
+          <button id="compare-btn" type="button" class="secondary" disabled>Добавить в сравнение</button>
         </div>
       </form>
       <p id="error" class="error" role="alert" aria-live="polite"></p>
@@ -88,7 +101,7 @@
 
     <section class="panel result-panel hidden" id="result-panel">
       <div class="result-head">
-        <h2>Результат</h2>
+        <h2 id="result_title">Результат</h2>
         <span id="status-chip" class="status-chip">Готово</span>
       </div>
 
@@ -96,21 +109,37 @@
 
       <div class="grid metrics">
         <article class="metric-card">
-          <p>Веса</p>
+          <p id="metric_weights">Веса</p>
           <strong id="weights">-</strong>
         </article>
         <article class="metric-card">
-          <p>KV cache</p>
+          <p id="metric_kv">KV cache</p>
           <strong id="kv_cache">-</strong>
         </article>
         <article class="metric-card">
-          <p>Итого VRAM</p>
+          <p id="metric_total">Итого VRAM</p>
           <strong id="total">-</strong>
         </article>
       </div>
 
-      <h3>Варианты квантования</h3>
+      <h3 id="quant_title">Варианты квантования</h3>
       <div id="quantizations" class="quant-list"></div>
+    </section>
+
+    <section class="panel hidden" id="compare-panel">
+      <div class="result-head">
+        <h2 id="compare_title">Сравнение моделей</h2>
+        <button id="clear-compare" class="secondary" type="button">Очистить</button>
+      </div>
+      <div id="compare-list" class="compare-list"></div>
+    </section>
+
+    <section class="panel hidden" id="history-panel">
+      <div class="result-head">
+        <h2 id="history_title">Последние проверки</h2>
+        <button id="clear-history" class="secondary" type="button">Очистить</button>
+      </div>
+      <div id="history-list" class="history-list"></div>
     </section>
   </main>
 
